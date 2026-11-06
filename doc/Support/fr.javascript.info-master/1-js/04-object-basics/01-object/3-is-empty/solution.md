@@ -1,0 +1,1 @@
+Passez simplement une boucle sur l’objet et `return false` immédiatement s’il existe au moins une propriété.

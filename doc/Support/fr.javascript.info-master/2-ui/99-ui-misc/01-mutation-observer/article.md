@@ -1,0 +1,271 @@
+
+# Mutation observer
+
+`MutationObserver` est un objet intégré qui observe un élément DOM et déclenche une callback (fonction de rappel) lorsqu'il détecte un changement.
+
+Nous examinerons d'abord la syntaxe, puis nous étudierons un cas d'utilisation réel, pour voir où ce genre de chose peut être utile.
+
+## Syntaxe
+
+`MutationObserver` est facile à utiliser.
+
+Tout d'abord, nous créons un observateur avec un callback:
+
+```js
+let observer = new MutationObserver(callback);
+```
+
+Et ensuite on l'attache à un nœud DOM:
+
+```js
+observer.observe(node, config);
+```
+
+`config` est un objet avec des options booléennes "sur quel type de changements réagir":
+- `childList` -- les changements dans les enfants directs de `node`,
+- `subtree` -- dans tous les descendants de `node`,
+- `attributes` -- dans les attributs de `node`,
+- `attributeFilter` -- dans un tableau de noms d'attributs, pour n'observer que ceux qui sont sélectionnés, 
+- `characterData` -- s'il faut observer `node.data` (contenu du texte),
+
+Quelques autres options:
+- `attributeOldValue` -- si `true`, passer l'ancienne et la nouvelle valeur de l'attribut au callback (voir ci-dessous), sinon, seule la nouvelle valeur (a besoin de l'option `attributes`).
+- `characterDataOldValue` -- si `true`, passer l'ancienne et la nouvelle valeur de `node.data` au callback (voir ci-dessous), sinon, seule la nouvelle valeur (a besoin de l'option `characterData`)
+
+Ensuite, après tout changement, le `callback` est exécuté : les changements sont passés dans le premier argument comme une liste d'objets [MutationRecord](https://dom.spec.whatwg.org/#mutationrecord), et l'observer lui-même comme deuxième argument.
+
+Les objects [MutationRecord](https://dom.spec.whatwg.org/#mutationrecord) ont les propriétés suivantes:
+
+- `type` -- type de mutation, valeurs possibles:
+    - `"attributes"`: attribut modifié, 
+    - `"characterData"`: données modifiées, utilisées pour les nœuds de texte, 
+    - `"childList"`: éléments enfants ajoutés/supprimés, 
+- `target` -- où le changement a eu lieu: un élément pour les `attributes`, ou un nœud de texte pour les `characterData`, ou un élément pour une mutation `childList`,
+- `addedNodes/removedNodes`  -- les nœuds qui ont été ajoutés/supprimés,
+- `previousSibling/nextSibling` -- le frère ou la sœur précédent(e) et suivant(e) aux nœuds ajoutés/supprimés,
+- `attributeName/attributeNamespace` -- le nom/espace de nommage (pour XML) de l'attribut modifié,
+- `oldValue` -- la valeur précédente, uniquement pour les modifications d'attributs ou de texte, si l'option correspondante est définie `attributeOldValue/characterDataOldValue`.
+
+Par exemple, voici un `<div>` avec un attribut `contentEditable`. Cet attribut nous permet de "focus" contenu et de l'éditer.
+
+```html run
+<div contentEditable id="elem">Click and <b>edit</b>, please</div>
+
+<script>
+let observer = new MutationObserver(mutationRecords => {
+  console.log(mutationRecords); // console.log(les changements)
+});
+
+// observer tout sauf les attributs
+observer.observe(elem, {
+  childList: true, // observer les enfants directs
+  subtree: true, // et les descendants aussi
+  characterDataOldValue: true // transmettre les anciennes données au callback
+});
+</script>
+```
+
+Si nous exécutons ce code dans le navigateur, puis qu'on focus la `<div>` donné et changeons le texte à l'intérieur de `<b>edit</b>`, `console.log` affichera une mutation:
+
+```js
+mutationRecords = [{
+  type: "characterData",
+  oldValue: "edit",
+  target: <text node>,
+  // autres propriétés vides
+}];
+```
+
+Si nous effectuons des opérations d'édition plus complexes, par exemple en supprimant le `<b>edit</b>`, l'événement de mutation peut contenir plusieurs enregistrements de mutation:
+
+```js
+mutationRecords = [{
+  type: "childList",
+  target: <div#elem>,
+  removedNodes: [<b>],
+  nextSibling: <text node>,
+  previousSibling: <text node>
+  // autres propriétés vides
+}, {
+  type: "characterData"
+  target: <text node>
+  // ...les détails de la mutation dépendent de la façon dont le navigateur gère cette suppression
+  // il peut regrouper deux nœuds de texte adjacents "edit" et ", please" en un seul nœud
+  // ou il peut leur laisser des nœuds de texte séparés
+}];
+```
+
+`MutationObserver` permet donc de réagir à tout changement dans le sous-arbre DOM
+
+## Utilisation pour l'intégration
+
+Quand une telle chose peut-elle être utile ?
+
+Imaginez la situation où vous devez ajouter un script tiers qui contient des fonctionnalités utiles, mais qui fait aussi quelque chose d'indésirable, par exemple afficher des annonces `<div class="ads">Unwanted ads</div>`.
+
+Naturellement, le script tiers ne prévoit aucun mécanisme permettant de le supprimer.
+
+Grâce à `MutationObserver`, nous pouvons détecter quand l'élément indésirable apparaît dans notre DOM et le supprimer.
+
+Il y a d'autres situations où un script tiers ajoute quelque chose dans notre document, et nous aimerions détecter, quand cela se produit, d'adapter notre page, de redimensionner dynamiquement quelque chose, etc.
+
+`MutationObserver` permet de faire tout ça.
+
+## Utilisation pour l'architecture
+
+Il y a aussi des situations où `MutationObserver` est bon du point de vue architectural.
+
+Disons que nous faisons un site web sur la programmation. Naturellement, les articles et autres matériels peuvent contenir des extraits de code source.
+
+Voici à quoi ressemble un tel extrait dans un balisage HTML:
+
+```html
+...
+<pre class="language-javascript"><code>
+  // voici le code
+  let hello = "world";
+</code></pre>
+...
+```
+
+Pour une meilleure lisibilité et en même temps, pour l'embellir, nous utiliserons une bibliothèque de coloration syntaxique JavaScript sur notre site, comme [Prism.js](https://prismjs.com/). Pour obtenir la coloration syntaxique de l'extrait de code ci-dessus dans Prism, `Prism.highlightElem(pre)` est appelé, qui examine le contenu de ces éléments `pre` et ajoute des balises et des styles spéciaux pour la coloration syntaxique colorée dans ces éléments, similaire à ce que vous voyez en exemples ici, sur cette page.
+
+Quand exactement faut-il appliquer cette méthode de mise en évidence ? Nous pouvons le faire sur l'événement `DOMContentLoaded`, ou en bas de page. À ce moment, nous avons notre DOM prêt, nous pouvons rechercher des éléments `pre[class*="language"]` et appeler `Prism.highlightElem` dessus :
+
+```js
+// mettre en évidence tous les extraits de code sur la page
+document.querySelectorAll('pre[class*="language"]').forEach(Prism.highlightElem);
+```
+
+Tout est simple jusqu'à présent, n'est-ce pas ? Nous trouvons des extraits de code en HTML et les mettons en évidence.
+
+Maintenant, continuons. Disons que nous allons chercher dynamiquement des éléments sur un serveur. Nous étudierons les méthodes pour cela [plus tard dans le tutoriel](info:fetch). Pour l'instant, il suffit d'aller chercher un article HTML sur un serveur web et de l'afficher à la demande :
+
+```js
+let article = /* récupérer du nouveau contenu sur le serveur */
+articleElem.innerHTML = article;
+```
+
+Le nouvel `article` HTML peut contenir des extraits de code. Nous devons appeler `Prism.highlightElem` sur eux, sinon ils ne seront pas mis en évidence.
+
+**Où et quand appeler `Prism.highlightElem` pour un article chargé dynamiquement ?**
+
+Nous pourrions ajouter cet appel au code qui charge un article, comme ceci:
+
+```js
+let article = /* récupérer du nouveau contenu sur le serveur */
+articleElem.innerHTML = article;
+
+*!*
+let snippets = articleElem.querySelectorAll('pre[class*="language-"]');
+snippets.forEach(Prism.highlightElem);
+*/!*
+```
+
+... Mais imaginez si nous avons de nombreux endroits dans le code où nous chargeons notre contenu -- articles, quiz, messages de forum, etc. Devons-nous mettre l'appel de mise en évidence partout, pour mettre en évidence le code dans le contenu après le chargement? Ce n'est pas très pratique.
+
+Et si le contenu est chargé par un module tiers ? Par exemple, nous avons un forum écrit par quelqu'un d'autre, qui charge le contenu dynamiquement, et nous aimerions y ajouter une mise en évidence syntaxique. Personne n'aime patcher des scripts tiers.
+
+Heureusement, il y a une autre option.
+
+Nous pouvons utiliser `MutationObserver` pour détecter automatiquement quand des extraits de code sont insérés dans la page et les mettre en évidence.
+
+Nous allons donc gérer la fonctionnalité de mise en évidence en un seul endroit.
+
+### Démonstration dynamique de mise en évidence
+
+Si vous exécutez ce code, il commence à observer l'élément ci-dessous et à mettre en évidence tout extrait de code qui y apparaît:
+
+```js run
+let observer = new MutationObserver(mutations => {
+
+  for(let mutation of mutations) {
+    // examiner les nouveaux nœuds, y a-t-il quelque chose à mettre en évidence ?
+
+    for(let node of mutation.addedNodes) {
+      // nous ne suivons que les éléments, nous sautons les autres nœuds (par exemple les nœuds de texte)
+      if (!(node instanceof HTMLElement)) continue;
+
+      // vérifier que l'élément inséré est un extrait de code
+      if (node.matches('pre[class*="language-"]')) {
+        Prism.highlightElement(node);
+      }
+
+      // ou peut-être qu'il y a un extrait de code quelque part dans son sous-arbre ?
+      for(let elem of node.querySelectorAll('pre[class*="language-"]')) {
+        Prism.highlightElement(elem);
+      }
+    }
+  }
+
+});
+
+let demoElem = document.getElementById('highlight-demo');
+
+observer.observe(demoElem, {childList: true, subtree: true});
+```
+
+Ci-dessous, il y a un élément HTML et JavaScript qui le remplit dynamiquement en utilisant `innerHTML`.
+
+Veuillez exécuter le code précédent (ci-dessus, qui observe cet élément), puis le code ci-dessous. Vous verrez comment `MutationObserver` détecte et met en évidence l'extrait.
+
+<p id="highlight-demo" style="border: 1px solid #ddd">Voici un élément de démonstration avec <code>id="highlight-demo"</code>, exécutez le code ci-dessus pour l'observer.</p>
+
+Le code suivant remplit son `innerHTML`, qui fait réagir le `MutationObserver` et met en évidence son contenu:
+
+```js run
+let demoElem = document.getElementById('highlight-demo');
+
+// insérer dynamiquement du contenu avec des extraits de code
+demoElem.innerHTML = `Vous trouverez ci-dessous un extrait de code:
+  <pre class="language-javascript"><code> let hello = "world!"; </code></pre>
+  <div>Un autre:</div>
+  <div>
+    <pre class="language-css"><code>.class { margin: 5px; } </code></pre>
+  </div>
+`;
+```
+
+Nous avons maintenant `MutationObserver` qui peut suivre tous les surlignages dans les éléments observés ou dans le `document` entier. Nous pouvons ajouter/supprimer des bribes de code en HTML sans y penser.
+
+## Méthodes supplémentaires
+
+Il y a une méthode pour arrêter d'observer le nœud:
+
+- `observer.disconnect()` -- arrête l'observation.
+
+Lorsque nous arrêtons l'observation, il est possible que certaines modifications n'aient pas encore été traitées par l'observateur.
+
+- `observer.takeRecords()` -- obtient une liste des dossiers de mutation non traités, ceux qui se sont produits, mais le rappel n'a pas permis de les traiter.
+
+Ces méthodes peuvent être utilisées ensemble, comme ceci:
+
+```js
+// obtenir une liste des mutations non traitées
+// doit être appelé avant de se déconnecter,
+// si vous vous souciez de mutations récentes éventuellement non gérées
+let mutationRecords = observer.takeRecords();
+
+// stop tracking changes
+observer.disconnect();
+...
+```
+
+
+```smart header="Les enregistrements retournés par ʻobserver.takeRecords() `sont supprimés de la file d'attente de traitement"
+Le rappel ne sera pas appelé pour les enregistrements, renvoyé par `observer.takeRecords()`.
+```
+
+```smart header="Interaction avec le garbage collection"
+Les observateurs utilisent des références faibles aux nœuds en interne. Autrement dit, si un nœud est retiré du DOM et devient inaccessible, il devient alors un déchet collecté.
+
+Le simple fait qu'un nœud DOM soit observé n'empêche pas le ramassage des ordures.
+```
+
+## Résumé  
+
+`MutationObserver` peut réagir aux changements dans le DOM -- attributs, contenu de texte et ajout / suppression d'éléments.
+
+Nous pouvons l'utiliser pour suivre les changements introduits par d'autres parties de notre code, ainsi que pour intégrer des scripts tiers.
+
+`MutationObserver` peut suivre tout changement. Les options de configuration "ce qu'il faut observer" sont utilisées pour des optimisations, afin de ne pas dépenser des ressources pour des callback inutiles.

@@ -1,0 +1,351 @@
+
+# Attributs et descripteurs de propriétés
+
+Comme nous le savons, les objets peuvent stocker des propriétés.
+
+Jusqu'à présent, une propriété était pour nous une simple paire "clé-valeur". Mais une propriété d'objet est en réalité une chose plus flexible et plus puissante.
+
+Dans ce chapitre, nous étudierons des options de configuration supplémentaires et, dans le prochain, nous verrons comment les transformer de manière invisible en fonctions de accesseur / mutateur.
+
+## Attributs de propriétés
+
+Les propriétés des objets, outre que **`valeur`**, ont trois attributs spéciaux (appelés drapeaux, ou "flags" en anglais):
+
+- **`writable`** -- si `true`, la valeur peut être changée, sinon c'est en lecture seule.
+- **`enumerable`** -- si `true`, alors listé dans les boucles, sinon non listé.
+- **`configurable`** -- si `true`, la propriété peut être supprimée et ces attributs peuvent être modifiés, sinon non.
+
+Nous ne les avons pas encore vues, car généralement elles ne se présentent pas. Lorsque nous créons une propriété "de la manière habituelle", ils sont tous `true`. Mais nous pouvons aussi les changer à tout moment.
+
+Voyons d’abord comment obtenir ces "flags".
+
+La methode [Object.getOwnPropertyDescriptor](https://developer.mozilla.org/fr/docs/Web/JavaScript/Reference/Objets_globaux/Object/getOwnPropertyDescriptor) permet d'interroger les informations *complètes* à propos d'une propriété.
+
+La syntaxe est la suivante :
+
+```js
+let descriptor = Object.getOwnPropertyDescriptor(obj, propertyName);
+```
+
+`obj`
+: L'objet à partir duquel obtenir des informations.
+
+`propertyName`
+: Le nom de la propriété.
+
+La valeur renvoyée est un objet dit "descripteur de propriété" : il contient la valeur et tous les descripteurs.
+
+Par exemple :
+
+```js run
+let user = {
+  name: "John"
+};
+
+let descriptor = Object.getOwnPropertyDescriptor(user, 'name');
+
+alert( JSON.stringify(descriptor, null, 2 ) );
+/* property descriptor:
+{
+  "value": "John",
+  "writable": true,
+  "enumerable": true,
+  "configurable": true
+}
+*/
+```
+
+Pour changer les attributs, on peut utiliser [Object.defineProperty](https://developer.mozilla.org/fr/docs/Web/JavaScript/Reference/Objets_globaux/Object/defineProperty).
+
+La syntaxe est la suivante :
+
+```js
+Object.defineProperty(obj, propertyName, descriptor)
+```
+
+`obj`, `propertyName`
+: L'objet et sa propriété pour appliquer le descripteur.
+
+`descriptor`
+: Descripteur de propriété d'objet à appliquer.
+
+Si la propriété existe, `defineProperty` met à jour ses attributs. Sinon, il crée la propriété avec la valeur et les descripteurs donnés. Dans ce cas, si aucun drapeau n'est fourni, il est supposé `false`.
+
+Par exemple, ici, une propriété `name` est créée avec tous les attributs falsy :
+
+```js run
+let user = {};
+
+*!*
+Object.defineProperty(user, "name", {
+value: "John"
+});
+*/!*
+
+let descriptor = Object.getOwnPropertyDescriptor(user, 'name');
+
+alert( JSON.stringify(descriptor, null, 2 ) );
+/*
+{
+"value": "John",
+*!*
+"writable": false,
+"enumerable": false,
+"configurable": false
+*/!*
+}
+*/
+```
+
+Comparez-le avec `user.name` "normalement créé" ci-dessus : maintenant tous les attributs sont falsy. Si ce n'est pas ce que nous voulons, nous ferions mieux de leur attribuer la valeur `true` dans `descriptor`.
+
+Voyons maintenant les effets des attributs par exemple.
+
+## Lecture seule
+
+Rendons `user.name` en lecture seule (ne peut pas être réaffecté) en modifiant l'indicateur `writeable` :
+
+```js run
+let user = {
+name: "John"
+};
+
+Object.defineProperty(user, "name", {
+*!*
+writable: false
+*/!*
+});
+
+*!*
+user.name = "Pete"; // Error: Cannot assign to read only property 'name'
+*/!*
+```
+
+Maintenant, personne ne peut changer le nom de notre utilisateur, à moins qu’ils appliquent leur propre `defineProperty` pour remplacer le nôtre.
+
+```smart header="Les erreurs apparaissent uniquement en mode strict"
+En mode non strict, aucune erreur ne se produit lors de l'écriture dans des propriétés non inscriptibles et autres. Mais l'opération ne réussira toujours pas. Les actions violant l'indicateur sont simplement ignorées en silence dans les non-stricts.
+```
+
+Voici le même exemple, mais la propriété est créée à partir de zéro :
+
+```js run
+let user = { };
+
+Object.defineProperty(user, "name", {
+*!*
+value: "John",
+// pour les nouvelles propriétés, nous devons lister explicitement ce qui est vrai
+enumerable: true,
+configurable: true
+*/!*
+});
+
+alert(user.name); // John
+user.name = "Pete"; // Error
+```
+
+## Non énumérable
+
+Ajoutons maintenant un `toString` personnalisé à `user`.
+
+Normalement, un `toString` intégré pour les objets n'est pas énumérable, il n'apparaît pas dans `for..in`. Mais si nous ajoutons notre propre `toString`, alors, par défaut, il apparaît dans `for..in`, comme ceci :
+
+```js run
+let user = {
+name: "John",
+toString() {
+  return this.name;
+}
+};
+
+// Par défaut, nos deux propriétés sont répertoriées :
+for (let key in user) alert(key); // name, toString
+```
+
+Si nous n'aimons pas cela, alors nous pouvons définir `enumerable: false`. Ensuite, il n'apparaîtra pas dans la boucle `for..in`, comme dans la boucle intégrée :
+
+```js run
+let user = {
+name: "John",
+toString() {
+  return this.name;
+}
+};
+
+Object.defineProperty(user, "toString", {
+*!*
+enumerable: false
+*/!*
+});
+
+*!*
+// Maintenant notre toString disparaît :
+*/!*
+for (let key in user) alert(key); // name
+```
+
+Les propriétés non énumérables sont également exclues de `Object.keys` :
+
+```js
+alert(Object.keys(user)); // name
+```
+
+## Non configurable
+
+Le descripteur non configurable (`configurable: false`) est parfois prédéfini pour les objets et propriétés intégrés.
+
+Une propriété non configurable ne peut pas être supprimée, ses attributs ne peuvent pas être modifiés.
+
+Par exemple, `Math.PI` est en lecture seule, non énumérable et non configurable :
+
+```js run
+let descriptor = Object.getOwnPropertyDescriptor(Math, 'PI');
+
+alert( JSON.stringify(descriptor, null, 2 ) );
+/*
+{
+"value": 3.141592653589793,
+"writable": false,
+"enumerable": false,
+"configurable": false
+}
+*/
+```
+
+Ainsi, un programmeur est incapable de changer la valeur de `Math.PI` ou de le remplacer.
+
+```js run
+Math.PI = 3; // Error, because it has writable: false
+
+// supprimer Math.PI ne fonctionnera pas non plus
+```
+
+Nous ne pouvons pas non plus changer `Math.PI` pour qu'il soit à nouveau `writable` (éditable) :
+
+```js run
+// Error, parce que configurable: false
+Object.defineProperty(Math, "PI", { writable: true });
+```
+
+Il n'y a absolument rien que nous puissions faire avec `Math.PI`.
+
+Rendre une propriété non configurable est une voie à sens unique. Nous ne pouvons pas le modifier avec `defineProperty`.
+
+**Veuillez noter : `configurable: false` empêche les changements d'indicateurs de propriété et sa suppression, tout en permettant de changer sa valeur.**
+
+Ici, `user.name` n'est pas configurable, mais nous pouvons toujours le changer (car il est accessible en écriture) :
+
+```js run
+let user = {
+  name: "John"
+};
+
+Object.defineProperty(user, "name", {
+  configurable: false
+});
+
+user.name = "Pete"; // ça fonctionne
+delete user.name; // Error
+```
+
+Ici, nous faisons de `user.name` une constante "scellée à jamais", tout comme `Math.PI` :
+
+```js run
+let user = {
+  name: "John"
+};
+
+Object.defineProperty(user, "name", {
+  writable: false,
+  configurable: false
+});
+
+// ne pourra pas changer user.name ou ses indicateurs
+// tout cela ne fonctionnera pas :
+user.name = "Pete";
+delete user.name;
+Object.defineProperty(user, "name", { value: "Pete" });
+```
+
+```smart header="Le seul changement d'attribut possible : writable true -> false"
+Il existe une exception mineure concernant la modification des indicateurs.
+
+Nous pouvons changer `writable: true` en `false` pour une propriété non configurable, empêchant ainsi la modification de sa valeur (pour ajouter une autre couche de protection).
+```
+
+## Object.defineProperties
+
+Il y a une méthode [Object.defineProperties(obj, descriptors)](https://developer.mozilla.org/fr/docs/Web/JavaScript/Reference/Objets_globaux/Object/defineProperties) qui permet de définir plusieurs propriétés à la fois.
+
+La syntaxe est la suivante :
+
+```js
+Object.defineProperties(obj, {
+prop1: descriptor1,
+prop2: descriptor2
+// ...
+});
+```
+
+Par exemple :
+
+```js
+Object.defineProperties(user, {
+name: { value: "John", writable: false },
+surname: { value: "Smith", writable: false },
+// ...
+});
+```
+
+Nous pouvons donc définir plusieurs propriétés à la fois.
+
+## Object.getOwnPropertyDescriptors
+
+Pour obtenir tous les descripteurs de propriété à la fois, nous pouvons utiliser la méthode [Object.getOwnPropertyDescriptors(obj)](https://developer.mozilla.org/fr/docs/Web/JavaScript/Reference/Objets_globaux/Object/getOwnPropertyDescriptors).
+
+Avec `Object.defineProperties`, elle peut être utilisé comme moyen de cloner un objet en tenant compte des attributs :
+
+```js
+let clone = Object.defineProperties({}, Object.getOwnPropertyDescriptors(obj));
+```
+
+Normalement, lorsque nous clonons un objet, nous utilisons une affectation pour copier les propriétés, comme ceci :
+
+```js
+for (let key in user) {
+clone[key] = user[key]
+}
+```
+
+...Mais cela ne copie pas les attributs. Donc, si nous voulons un "meilleur" clone, alors `Object.defineProperties` est préféré.
+
+Une autre différence est que `for..in` ignore les propriétés symboliques, mais que `Object.getOwnPropertyDescriptors` renvoie *tous* les descripteurs de propriété, y compris ceux symboliques et non énumérables.
+
+## Sceller un objet globalement
+
+Les descripteurs de propriété fonctionnent au niveau des propriétés individuelles.
+
+Il existe également des méthodes qui limitent l'accès à l'objet *entier* :
+
+[Object.preventExtensions(obj)](https://developer.mozilla.org/fr/docs/Web/JavaScript/Reference/Objets_globaux/Object/preventExtensions)
+: Interdit l'ajout de nouvelles propriétés à l'objet.
+
+[Object.seal(obj)](https://developer.mozilla.org/fr/docs/Web/JavaScript/Reference/Objets_globaux/Object/seal)
+: Interdit l'ajout/la suppression de propriétés. Définit `configurable: false` pour toutes les propriétés existantes.
+
+[Object.freeze(obj)](https://developer.mozilla.org/fr/docs/Web/JavaScript/Reference/Objets_globaux/Object/freeze)
+: Interdit l'ajout/la suppression/la modification de propriétés. Définit `configurable: false, writeable: false` pour toutes les propriétés existantes.
+
+Et aussi il y a des tests pour eux :
+
+[Object.isExtensible(obj)](https://developer.mozilla.org/fr/docs/Web/JavaScript/Reference/Objets_globaux/Object/isExtensible)
+: Retourne `false` si l'ajout de propriétés est interdit, sinon `true`.
+
+[Object.isSealed(obj)](https://developer.mozilla.org/fr/docs/Web/JavaScript/Reference/Objets_globaux/Object/isSealed)
+: Renvoie `true` si l'ajout/la suppression de propriétés est interdite et que toutes les propriétés existantes ont `configurable: false`.
+
+[Object.isFrozen(obj)](https://developer.mozilla.org/fr/docs/Web/JavaScript/Reference/Objets_globaux/Object/isFrozen)
+: Retourne `true` si l'ajout/la suppression/la modification de propriétés est interdite et si toutes les propriétés actuelles sont `configurable: false, writable: false`.
+
+Ces méthodes sont rarement utilisées dans la pratique.

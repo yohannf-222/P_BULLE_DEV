@@ -4,12 +4,12 @@
  * Calcule une énergie en ajoutant un bonus.
  */
 export function calculateEnergy(base, bonus = 0) {
-  // TODO
+  return base + bonus;
 }
 
 /**
  * Multiplie une énergie par un facteur.
  */
 export function multiplyEnergy(energy, factor = 2) {
-  // TODO
+  return energy * factor;
 }
